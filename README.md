@@ -27,10 +27,11 @@ $ pip install -e .
 ```python
 from uims_api import SessionUIMS
 
-my_acc = SessionUIMS("YourUID", "YourPass")
+# replace these with your credentials
+my_account = SessionUIMS("YourUID", "YourPass")
 
 # `my_acc.attendance` returns attendance info for available subjects in JSON format
-subjects = my_acc.attendance
+subjects = my_account.attendance
 
 # display attendance for each subject
 for subject in subjects:
