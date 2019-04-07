@@ -43,7 +43,7 @@ Let's keep this as minimal as possible using `requests` and `BeatifulSoup` libra
 
 Relying on browser automation tools (selenium) could work but isn't a very portable solution. It is
 slower and takes up more processing power. Also, setting up such tools could end up being a nightmare
-when attempting then to run on headless devices (such as a Raspberry Pi).
+when attempting them to run on headless devices (such as a Raspberry Pi).
 
 That said, any pull requests to enhance capabilities or cover up more end points that make use of `requests`
 and `BeautifulSoup` libraries are most welcome!
