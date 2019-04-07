@@ -29,8 +29,13 @@ from uims_api import SessionUIMS
 
 my_acc = SessionUIMS("YourUID", "YourPass")
 
-# outputs attendance info for available subjects in json
-print(my_acc.attendance)
+# `my_acc.attendance` returns attendance info for available subjects in JSON format
+subjects = my_acc.attendance
+
+# display attendance for each subject
+for subject in subjects:
+    subject_attendance = "{} - {}%".format(subject["Title"], subject["TotalPercentage"])
+    print(subject_attendance)
 ```
 
 ## Documentation
