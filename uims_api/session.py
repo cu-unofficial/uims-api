@@ -78,8 +78,3 @@ class SessionUIMS:
 
         attendance = json.loads(response.text)["d"]
         return json.loads(attendance)
-
-
-class SubjectAttendance:
-    def __init__(self, html):
-        pass
