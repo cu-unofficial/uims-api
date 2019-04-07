@@ -51,5 +51,5 @@ Relying on browser automation tools (selenium) could work but isn't a very porta
 slower and takes up more processing power. Also, setting up such tools could end up being a nightmare
 when attempting them to run on headless devices (such as a Raspberry Pi).
 
-That said, any pull requests to enhance capabilities or cover up more end points that make use of `requests`
-and `BeautifulSoup` libraries are most welcome!
+That said, if you know Python, any pull requests to enhance capabilities or cover up more end points that make use of `requests`
+and `BeautifulSoup` libraries are most welcome! Otherwise if you don't know Python, you could help me complete my assignments!
