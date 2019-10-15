@@ -80,7 +80,7 @@ class SessionUIMS:
 
         report_url = attendance_url + "/GetReport"
         headers = {'Content-Type': 'application/json'}
-        data = "{UID:'" + report_id + "'}"
+        data = "{UID:'" + report_id + "',Session:'19201'}"
         response = requests.post(report_url, headers=headers, data=data)
 
         attendance = json.loads(response.text)["d"]
