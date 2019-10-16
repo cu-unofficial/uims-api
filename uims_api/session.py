@@ -70,18 +70,38 @@ class SessionUIMS:
         return self._attendance
 
     def _get_attendance(self):
+        # The attendance URL looks like
+        # https://uims.cuchd.in/UIMS/frmStudentCourseWiseAttendanceSummary.aspx
         attendance_url = AUTHENTICATE_URL + ENDPOINTS["Attendance"]
 
+        # We make an authenticated GET request (by passing the login cookies) to fetch the
+        # contents of the attendance page
+        # These cookies contain encoded information about the current logged in UID whose
+        # attendance information is to be fetched
         response = requests.get(attendance_url, cookies=self.cookies)
+
+        # We now scrape for the uniquely generated report ID for the current UIMS session
+        # in the above returned response
+
+        # I have no idea why and what purpose this report ID serves, but this field needed to
+        # fetch the attendance in JSON format in the next step as you'll see, otherwise the
+        # server will return an error response
         js_report_block = response.text.find("getReport")
-        initial_quotation_mark = js_report_block + response.text[js_report_block:].find("'")
+        initial_quotation_mark = js_report_block + response.text[js_report_block:].find ("'")
         ending_quotation_mark = initial_quotation_mark + response.text[initial_quotation_mark+1:].find("'")
         report_id = response.text[initial_quotation_mark+1 : ending_quotation_mark+1]
 
+        # On intercepting the requests made by my browser, I found that this URL returns the
+        # attendance information in JSON format
         report_url = attendance_url + "/GetReport"
+
+        # This attendance information in JSON format is exactly what we need, and it is possible
+        # to replicate the web-browser intercepted request using python requests by passing
+        # the following fields
         headers = {'Content-Type': 'application/json'}
         data = "{UID:'" + report_id + "',Session:'19201'}"
         response = requests.post(report_url, headers=headers, data=data)
 
+        # We then return the extracted JSON content
         attendance = json.loads(response.text)["d"]
         return json.loads(attendance)
