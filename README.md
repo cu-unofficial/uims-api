@@ -2,7 +2,7 @@
 
 # uims-api
 
-This is a Python library which scrapes https://uims.cuchd.in for shiny things. Our goal is to wrap
+This is a Python library which scrapes https://uims.cuchd.in for account information. Our goal is to wrap
 commonly used web functionality as easy-to-use methods.
 
 ## Installation
