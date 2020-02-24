@@ -99,7 +99,7 @@ class SessionUIMS:
         # to replicate the web-browser intercepted request using python requests by passing
         # the following fields
         headers = {'Content-Type': 'application/json'}
-        data = "{UID:'" + report_id + "',Session:'19201'}"
+        data = "{UID:'" + report_id + "',Session:'19202'}"
         response = requests.post(report_url, headers=headers, data=data)
 
         # We then return the extracted JSON content
