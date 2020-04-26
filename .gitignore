@@ -4,3 +4,5 @@ __pycache__/
 uims_api.egg-info/
 build/
 dist/
+venv
+.idea
