@@ -2,13 +2,13 @@ import requests
 from bs4 import BeautifulSoup
 import json
 
-from .exceptions import IncorrectCredentialsError
+from .exceptions import IncorrectCredentialsError, UimsFailureError
 
 BASE_URL = "https://uims.cuchd.in"
 AUTHENTICATE_URL = BASE_URL + "/uims/"
 
 ENDPOINTS = {"Attendance": "frmStudentCourseWiseAttendanceSummary.aspx"}
-
+ERROR_HEAD = 'Whoops, Something broke!'
 
 class SessionUIMS:
     def __init__(self, uid, password):
@@ -79,6 +79,14 @@ class SessionUIMS:
         # These cookies contain encoded information about the current logged in UID whose
         # attendance information is to be fetched
         response = requests.get(attendance_url, cookies=self.cookies)
+        if(response.text.find(ERROR_HEAD)):
+            raise UimsFailureError('UIMS internal error occured')
+        
+        # Scraping current session ID
+        session_block = response.text.find('CurrentSession')
+        session_block_origin = session_block + response.text[session_block:].find('(')
+        session_block_end = session_block + response.text[session_block:].find(')')
+        current_session_id = response.text[session_block_origin+1:session_block_end]
 
         # We now scrape for the uniquely generated report ID for the current UIMS session
         # in the above returned response
@@ -99,9 +107,8 @@ class SessionUIMS:
         # to replicate the web-browser intercepted request using python requests by passing
         # the following fields
         headers = {'Content-Type': 'application/json'}
-        data = "{UID:'" + report_id + "',Session:'19202'}"
+        data = "{UID:'" + report_id + "',Session:'" + current_session_id + "'}"
         response = requests.post(report_url, headers=headers, data=data)
-
         # We then return the extracted JSON content
         attendance = json.loads(response.text)["d"]
         return json.loads(attendance)
