@@ -2,7 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import json
 
-from .exceptions import IncorrectCredentialsError, UimsFailureError
+from .exceptions import IncorrectCredentialsError, UIMSInternalError
 
 BASE_URL = "https://uims.cuchd.in"
 AUTHENTICATE_URL = BASE_URL + "/uims/"
@@ -79,10 +79,10 @@ class SessionUIMS:
         # These cookies contain encoded information about the current logged in UID whose
         # attendance information is to be fetched
         response = requests.get(attendance_url, cookies=self.cookies)
+        # Checking for error in response as status code returned is 200
         if(response.text.find(ERROR_HEAD)):
-            raise UimsFailureError('UIMS internal error occured')
-        
-        # Scraping current session ID
+            raise UIMSInternalError('UIMS internal error occured')
+        # Getting current session id from response
         session_block = response.text.find('CurrentSession')
         session_block_origin = session_block + response.text[session_block:].find('(')
         session_block_end = session_block + response.text[session_block:].find(')')
