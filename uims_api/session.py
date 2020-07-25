@@ -2,7 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import json
 
-from .exceptions import IncorrectCredentialsError, UIMSInternalError
+from .exceptions import IncorrectCredentialsError, UIMSInternalError, PasswordExpiredError
 
 BASE_URL = "https://uims.cuchd.in"
 AUTHENTICATE_URL = BASE_URL + "/uims/"
@@ -50,9 +50,10 @@ class SessionUIMS:
                                  cookies=response.cookies,
                                  allow_redirects=False)
 
-        incorrect_credentials = response.status_code == 200
-        if incorrect_credentials:
-            raise IncorrectCredentialsError("Make sure UID and Password are correct.")
+        if response.status_code == 200:
+            raise IncorrectCredentialsError('Make sure UID and Password are correct')
+        elif response.status_code == 302:
+            raise PasswordExpiredError('You Password has expired! Please update it first')
 
         aspnet_session_cookies = response.cookies
 
