@@ -53,7 +53,7 @@ class SessionUIMS:
         if response.status_code == 200:
             raise IncorrectCredentialsError('Make sure UID and Password are correct')
         elif response.status_code == 302:
-            raise PasswordExpiredError('You Password has expired! Please update it first')
+            raise PasswordExpiredError('Your Password has expired! Please update it first')
 
         aspnet_session_cookies = response.cookies
 
