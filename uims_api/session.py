@@ -97,7 +97,7 @@ class SessionUIMS:
         # attendance information is to be fetched
         response = requests.get(attendance_url, cookies=self.cookies)
         # Checking for error in response as status code returned is 200
-        if(response.text.find(ERROR_HEAD)):
+        if(response.text.find(ERROR_HEAD) != -1):
             raise UIMSInternalError('UIMS internal error occured')
         # Getting current session id from response
         session_block = response.text.find('CurrentSession')
