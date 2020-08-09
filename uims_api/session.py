@@ -9,7 +9,7 @@ AUTHENTICATE_URL = BASE_URL + "/uims/"
 
 ENDPOINTS = {"Attendance": "frmStudentCourseWiseAttendanceSummary.aspx"}
 ERROR_HEAD = 'Whoops, Something broke!'
-headers = {'Content-Type': 'application/json'}
+HEADERS = {'Content-Type': 'application/json'}
 
 class SessionUIMS:
     def __init__(self, uid, password):
@@ -81,7 +81,7 @@ class SessionUIMS:
         # Querying for every subject in attendance
         for subect in attendance:
             data = "{course:'" + subect['EncryptCode']  + "',UID:'" + self._reportId + "',fromDate: '',toDate:''" + ",type:'All'" + ",Session:'" + self._sessionId + "'}"
-            response = requests.post(full_report_url, headers=headers, data=data)
+            response = requests.post(full_report_url, headers=HEADERS, data=data)
             # removing esc sequence chars
             subect['FullAttendanceReport'] = json.loads(json.loads(response.text)['d'])
         return attendance
@@ -128,7 +128,7 @@ class SessionUIMS:
         # to replicate the web-browser intercepted request using python requests by passing
         # the following fields        
         data = "{UID:'" + report_id + "',Session:'" + current_session_id + "'}"
-        response = requests.post(report_url, headers=headers, data=data)
+        response = requests.post(report_url, headers=HEADERS, data=data)
         # We then return the extracted JSON content
         attendance = json.loads(response.text)["d"]
         return json.loads(attendance)
