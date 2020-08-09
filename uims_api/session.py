@@ -19,8 +19,8 @@ class SessionUIMS:
         self.refresh_session()
 
         self._attendance = None
-        self._reportId = None
-        self._sessionId = None
+        self._report_id = None
+        self._session_id = None
 
     def _login(self):
         response = requests.get(AUTHENTICATE_URL)
@@ -80,7 +80,7 @@ class SessionUIMS:
         full_report_url = AUTHENTICATE_URL + ENDPOINTS['Attendance'] + '/GetFullReport'
         # Querying for every subject in attendance
         for subect in attendance:
-            data = "{course:'" + subect['EncryptCode']  + "',UID:'" + self._reportId + "',fromDate: '',toDate:''" + ",type:'All'" + ",Session:'" + self._sessionId + "'}"
+            data = "{course:'" + subect['EncryptCode']  + "',UID:'" + self._report_id + "',fromDate: '',toDate:''" + ",type:'All'" + ",Session:'" + self._session_id + "'}"
             response = requests.post(full_report_url, headers=HEADERS, data=data)
             # removing esc sequence chars
             subect['FullAttendanceReport'] = json.loads(json.loads(response.text)['d'])
@@ -105,8 +105,8 @@ class SessionUIMS:
         session_block_end = session_block + response.text[session_block:].find(')')
         current_session_id = response.text[session_block_origin+1:session_block_end]
 
-        if not self._sessionId:
-            self._sessionId = current_session_id
+        if not self._session_id:
+            self._session_id = current_session_id
         # We now scrape for the uniquely generated report ID for the current UIMS session
         # in the above returned response
 
@@ -118,8 +118,8 @@ class SessionUIMS:
         ending_quotation_mark = initial_quotation_mark + response.text[initial_quotation_mark+1:].find("'")
         report_id = response.text[initial_quotation_mark+1 : ending_quotation_mark+1]
 
-        if not self._reportId:
-            self._reportId = report_id
+        if not self._report_id:
+            self._report_id = report_id
         # On intercepting the requests made by my browser, I found that this URL returns the
         # attendance information in JSON format
         report_url = attendance_url + "/GetReport"
