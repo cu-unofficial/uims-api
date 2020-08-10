@@ -79,11 +79,11 @@ class SessionUIMS:
         # Full report URL
         full_report_url = AUTHENTICATE_URL + ENDPOINTS['Attendance'] + '/GetFullReport'
         # Querying for every subject in attendance
-        for subect in attendance:
-            data = "{course:'" + subect['EncryptCode']  + "',UID:'" + self._report_id + "',fromDate: '',toDate:''" + ",type:'All'" + ",Session:'" + self._session_id + "'}"
+        for subject in attendance:
+            data = "{course:'" + subject['EncryptCode']  + "',UID:'" + self._report_id + "',fromDate: '',toDate:''" + ",type:'All'" + ",Session:'" + self._session_id + "'}"
             response = requests.post(full_report_url, headers=HEADERS, data=data)
             # removing esc sequence chars
-            subect['FullAttendanceReport'] = json.loads(json.loads(response.text)['d'])
+            subject['FullAttendanceReport'] = json.loads(json.loads(response.text)['d'])
         return attendance
 
     def _get_attendance(self):
