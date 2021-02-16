@@ -1,6 +1,7 @@
 *.pyc
 __pycache__/
 .cache/
+.vscode/
 uims_api.egg-info/
 build/
 dist/
