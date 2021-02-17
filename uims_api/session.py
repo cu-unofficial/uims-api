@@ -2,7 +2,6 @@ import requests
 from bs4 import BeautifulSoup
 import json
 import re
-
 from .exceptions import IncorrectCredentialsError, UIMSInternalError
 
 BASE_URL = "https://uims.cuchd.in"
@@ -11,6 +10,8 @@ AUTHENTICATE_URL = BASE_URL + "/uims/"
 ENDPOINTS = {
     "Attendance": "frmStudentCourseWiseAttendanceSummary.aspx",
     "Timetable": "frmMyTimeTable.aspx",
+    "Profile": "frmStudentProfile.aspx",
+    "Marks": "frmStudentMarksView.aspx",
 }
 # Workaround fix for new url
 ATTENDANCE_STATIC_EXTRA = "?type=etgkYfqBdH1fSfc255iYGw=="
@@ -26,9 +27,13 @@ class SessionUIMS:
         self.refresh_session()
 
         self._attendance = None
+        self._full_attendance = None
         self._timetable = None
+        self._marks = None
+        self._available_sessions = None
         self._report_id = None
         self._session_id = None
+        self._full_name = None
 
     def _login(self):
         response = requests.get(AUTHENTICATE_URL)
@@ -66,7 +71,6 @@ class SessionUIMS:
         incorrect_credentials = response.status_code == 200
         if incorrect_credentials:
             raise IncorrectCredentialsError("Make sure UID and Password are correct.")
-
         aspnet_session_cookies = response.cookies
 
         login_and_aspnet_session_cookies = requests.cookies.merge_cookies(
@@ -79,34 +83,107 @@ class SessionUIMS:
 
     @property
     def attendance(self):
+        "Attendance for current session"
         if self._attendance is None:
             self._attendance = self._get_attendance()
 
         return self._attendance
 
     @property
-    def full_attendance(self):
-        # getting minimal attendance
-        attendance = self.attendance
-        # Full report URL
-        full_report_url = AUTHENTICATE_URL + ENDPOINTS["Attendance"] + "/GetFullReport"
-        # Querying for every subject in attendance
-        for subject in attendance:
-            data = (
-                "{course:'"
-                + subject["EncryptCode"]
-                + "',UID:'"
-                + self._report_id
-                + "',fromDate: '',toDate:''"
-                + ",type:'All'"
-                + ",Session:'"
-                + self._session_id
-                + "'}"
-            )
-            response = requests.post(full_report_url, headers=HEADERS, data=data)
-            # removing esc sequence chars
-            subject["FullAttendanceReport"] = json.loads(json.loads(response.text)["d"])
-        return attendance
+    def full_name(self):
+        "Full Name of user"
+        if self._full_name is None:
+            self._full_name = self._get_full_name()
+
+        return self._full_name
+
+    def _get_full_name(self):
+        profile_url = "https://uims.cuchd.in/UIMS/frmAccountStudentDetails.aspx"
+        response = requests.get(profile_url, cookies=self.cookies)
+        # Checking for error in response as status code returned is 200
+        if response.text.find(ERROR_HEAD) != -1:
+            raise UIMSInternalError("UIMS internal error occured")
+        soup = BeautifulSoup(response.text, "html.parser")
+        return soup.find("div", {"class": "user-n-mob"}).get_text().strip()
+
+    @property
+    def available_sessions(self):
+        "Dictionary of available sessions with current session as True"
+        if self._available_sessions is None:
+            self._available_sessions = self._get_available_sessions()
+        return self._available_sessions
+
+    def _get_available_sessions(self):
+        marks_url = AUTHENTICATE_URL + ENDPOINTS["Marks"]
+
+        response = requests.get(marks_url, cookies=self.cookies)
+        # Checking for error in response as status code returned is 200
+        if response.text.find(ERROR_HEAD) != -1:
+            raise UIMSInternalError("UIMS internal error occured")
+        soup = BeautifulSoup(response.text, "html.parser")
+        select_tag = soup.find(
+            "select",
+            {"name": "ctl00$ContentPlaceHolder1$wucStudentMarksView$ddlCAndPSession"},
+        )
+        select_options = select_tag.findAll("option")
+        sessions = {option["value"]: False for option in select_options}
+        selected = select_tag.find("option", {"selected": True})
+        sessions[selected["value"]] = True
+        return sessions
+
+    def marks(self, session):
+        """
+        Fetch marks for a session
+        @session - Session value, available under available_sessions
+        """
+        if self._marks is None:
+            self._marks = self._get_marks(session)
+        return self._marks
+
+    def _get_marks(self, session):
+        marks_url = AUTHENTICATE_URL + ENDPOINTS["Marks"]
+
+        response = requests.get(marks_url, cookies=self.cookies)
+        # Checking for error in response as status code returned is 200
+        if response.text.find(ERROR_HEAD) != -1:
+            raise UIMSInternalError("UIMS internal error occured")
+        soup = BeautifulSoup(response.text, "html.parser")
+        viewstate_tag = soup.find("input", {"name": "__VIEWSTATE"})
+        event_validation_tag = soup.find("input", {"name": "__EVENTVALIDATION"})
+        data = {
+            "__VIEWSTATE": viewstate_tag["value"],
+            "__EVENTVALIDATION": event_validation_tag["value"],
+            "ctl00$ContentPlaceHolder1$wucStudentMarksView$ddlCAndPSession": session,
+        }
+        response = requests.post(marks_url, data=data, cookies=self.cookies)
+
+        return self._extract_marks(response)
+
+    def _extract_marks(self, response):
+        soup = BeautifulSoup(response.text, "html.parser")
+        accordion = soup.find("div", {"id": "accordion"})
+
+        subject_names = [i.get_text().strip() for i in accordion.findAll("h3")]
+        divs = accordion.findAll("div")
+
+        marks = []
+        if len(subject_names) == len(divs):
+            for i in range(0, len(divs)):
+                obj = {}
+                obj["name"] = subject_names[i]
+                tbody_trs = divs[i].find("tbody").findAll("tr")
+                sub_marks = []
+                for tr in tbody_trs:
+                    tds = tr.findAll("td")
+                    fields = {
+                        "element": tds[0].get_text().strip(),
+                        "total": tds[1].get_text().strip(),
+                        "obtained": tds[2].get_text().strip(),
+                    }
+                    sub_marks.append(fields)
+                obj["marks"] = sub_marks
+                marks.append(obj)
+        return marks
 
     def _get_attendance(self):
         # The attendance URL looks like
@@ -164,7 +241,41 @@ class SessionUIMS:
         return json.loads(attendance)
 
     @property
+    def full_attendance(self):
+        """
+        Attendance with marked status from instructor
+        - Accessible under 'FullAttendanceReport' of every subject
+        """
+        if not self._full_attendance:
+            self._full_attendance = self._get_full_attendance()
+        return self._full_attendance
+
+    def _get_full_attendance(self):
+        # getting minimal attendance
+        attendance = self.attendance
+        # Full report URL
+        full_report_url = AUTHENTICATE_URL + ENDPOINTS["Attendance"] + "/GetFullReport"
+        # Querying for every subject in attendance
+        for subect in attendance:
+            data = (
+                "{course:'"
+                + subect["EncryptCode"]
+                + "',UID:'"
+                + self._report_id
+                + "',fromDate: '',toDate:''"
+                + ",type:'All'"
+                + ",Session:'"
+                + self._session_id
+                + "'}"
+            )
+            response = requests.post(full_report_url, headers=HEADERS, data=data)
+            # removing all esc sequence chars
+            subect["FullAttendanceReport"] = json.loads(json.loads(response.text)["d"])
+        return attendance
+
+    @property
     def timetable(self):
+        "Timetable for current session"
         if not self._timetable:
             self._timetable = self._get_timetable()
         return self._timetable
@@ -189,12 +300,15 @@ class SessionUIMS:
         start_colon = report_div_block + response.text[report_div_block:].find(":")
         end_quotation = start_colon + 2 + response.text[start_colon + 2 :].find('"')
         report_div_id = response.text[start_colon + 2 : end_quotation]
+
         soup = BeautifulSoup(response.text, "html.parser")
         nearest_div_id = report_div_id[: report_div_id.find("oReportDiv")] + "5iS0xB_gr"
         div_tag = soup.find("div", {"id": nearest_div_id})
+
         table = div_tag.contents[0].contents
         # table[3] represents mapping of course and course code
         # table[1] represents actual table(s) for timetable
+
         # For mapping of course and course codes
         # Required in the next step
         mapping_table = table[3].contents[0].find("table")
@@ -204,12 +318,15 @@ class SessionUIMS:
             tds = row.find_all("td")
             course_code_div = tds[0].find("div")
             course_name_div = tds[1].find("div")
+
             if course_code_div != None and course_code_div.get_text() != "Course Code":
                 course_codes[course_code_div.get_text()] = course_name_div.get_text()
+
         # Now extracting day wise timings and subjects from table[1]
         table_body = table[1].contents[0].find("table")
         # getting rows with actual data only (1st row will be neglected as it doesnt have valign arg)
         table_body_rows = table_body.find_all("tr", {"valign": "top"})
+
         timetable = {}
         ttlist = []
         is_top_row = True
@@ -225,16 +342,19 @@ class SessionUIMS:
                 for elem in ttlist:
                     timetable[elem] = {}
                 continue
+
             data = []
             for td in tds:
                 td_div = td.find("div")
                 data.append(td_div.get_text() if td_div else None)
+
             timing = data[0].replace(" ", "")
             data = data[1:]
             for i in range(len(data)):
                 timetable[ttlist[i]][timing] = self._parse_timetable_subject(
                     data[i], course_codes
                 )
+
         return timetable
 
     def _parse_timetable_subject(self, subject, course_codes):
@@ -244,11 +364,13 @@ class SessionUIMS:
         if subject == None:
             return None
         return_subject = {}
+
         # Finding Subject Name
         sub_code_end = subject.find(":")
         sub_code = subject[0:sub_code_end]
         subject = subject[sub_code_end + 1 :]
         return_subject["title"] = str(course_codes[sub_code]).upper()
+
         # Finding Type of Lecture
         session_type = subject[0]
         subject = subject[1 : len(subject)]
@@ -258,6 +380,7 @@ class SessionUIMS:
             return_subject["type"] = "Practical"
         else:
             return_subject["type"] = "Tutorial"
+
         # Finding Group Type
         gp_start = subject.find("Gp-")
         subject = subject[gp_start:]
@@ -265,6 +388,7 @@ class SessionUIMS:
         group_type = subject[gp_start:ending_colon]
         return_subject["group"] = group_type
         subject = subject[ending_colon + 1 :]
+
         # Finding Teacher's Name
         exp_start = subject.find("By ")
         exp_end = subject.find("(")
@@ -273,4 +397,5 @@ class SessionUIMS:
         return_subject["teacher"] = (
             teacher_name if pattern.match(teacher_name) else None
         )
+
         return return_subject
