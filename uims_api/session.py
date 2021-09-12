@@ -52,7 +52,7 @@ class SessionUIMS:
 
         soup = BeautifulSoup(response.text, "html.parser")
 
-        password_url = BASE_URL + response.headers["location"]
+        password_url = response.headers["location"]
         response = requests.get(password_url, cookies=response.cookies)
         login_cookies = response.cookies
         soup = BeautifulSoup(response.text, "html.parser")
