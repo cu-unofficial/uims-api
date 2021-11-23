@@ -296,97 +296,93 @@ class SessionUIMS:
         return self._extract_timetable(response)
 
     def _extract_timetable(self, response):
-        report_div_block = response.text.find("ReportDivId")
-        start_colon = report_div_block + response.text[report_div_block:].find(":")
-        end_quotation = start_colon + 2 + response.text[start_colon + 2 :].find('"')
-        report_div_id = response.text[start_colon + 2 : end_quotation]
-
         soup = BeautifulSoup(response.text, "html.parser")
-        nearest_div_id = report_div_id[: report_div_id.find("oReportDiv")] + "5iS0xB_gr"
-        div_tag = soup.find("div", {"id": nearest_div_id})
-
-        table = div_tag.contents[0].contents
-        # table[3] represents mapping of course and course code
-        # table[1] represents actual table(s) for timetable
-
-        # For mapping of course and course codes
-        # Required in the next step
-        mapping_table = table[3].contents[0].find("table")
-        mp_table_rows = mapping_table.find_all("tr")
+        timetable_table = soup.find(
+            "table", {"id": "ContentPlaceHolder1_gvMyTimeTable"}
+        )
+        course_code_mapping_table = soup.find(
+            "table", {"id": "ContentPlaceHolder1_gvMyTimeTableDetails"}
+        )
+        # extract course_codes first
         course_codes = dict()
-        for row in mp_table_rows:
+        mapping_table_rows = course_code_mapping_table.find_all("tr")
+        for row in mapping_table_rows:
             tds = row.find_all("td")
-            course_code_div = tds[0].find("div")
-            course_name_div = tds[1].find("div")
+            # first is code, second is course name
+            if len(tds) > 1:
+                course_codes[tds[0].get_text(strip=True)] = tds[1].get_text(strip=True)
 
-            if course_code_div != None and course_code_div.get_text() != "Course Code":
-                course_codes[course_code_div.get_text()] = course_name_div.get_text()
+        # now extract day wise timetable from timetable_table
+        timetable_table_rows = timetable_table.find_all("tr")
+        # first row represents days
+        all_days = timetable_table_rows[0].find_all("th", {"scope": "col"})
+        actual_days = [day.get_text(strip=True) for day in all_days[1:]]
 
-        # Now extracting day wise timings and subjects from table[1]
-        table_body = table[1].contents[0].find("table")
-        # getting rows with actual data only (1st row will be neglected as it doesnt have valign arg)
-        table_body_rows = table_body.find_all("tr", {"valign": "top"})
+        # result timetable object
+        timetable = dict()
 
-        timetable = {}
-        ttlist = []
-        is_top_row = True
-        for row in table_body_rows:
-            # using regex to match all tds with some class
-            tds = row.find_all("td", {"class": re.compile(".*?")})
-            if is_top_row:
-                is_top_row = False
-                for td in tds:
-                    td_div = td.find("div")
-                    ttlist.append(td_div.get_text() if td_div else None)
-                ttlist = ttlist[1:]
-                for elem in ttlist:
-                    timetable[elem] = {}
-                continue
+        actual_timetable_rows = timetable_table_rows[1:]
 
-            data = []
-            for td in tds:
-                td_div = td.find("div")
-                data.append(td_div.get_text() if td_div else None)
+        # all tds as array of array ( used in future )
+        tds_in_actual_timetable_rows = []
+        for row in actual_timetable_rows:
+            tds = row.find_all("td")
+            tds_in_actual_timetable_rows.append(tds)
 
-            timing = data[0].replace(" ", "")
-            data = data[1:]
-            for i in range(len(data)):
-                timetable[ttlist[i]][timing] = self._parse_timetable_subject(
-                    data[i], course_codes
+        # represents [09:40 - 10:20 AM, 1:00 - 1:40 PM, ...]
+        timings_in_a_day = [
+            tds_row[0].get_text(strip=True) for tds_row in tds_in_actual_timetable_rows
+        ]
+
+        for i in range(len(actual_days)):
+            timings = []
+            for timing in range(len(timings_in_a_day)):
+                result_subject = tds_in_actual_timetable_rows[timing][i + 1].get_text(
+                    strip=True
                 )
+                timings.append(
+                    {
+                        timings_in_a_day[timing]: self._parse_timetable_subject(
+                            result_subject, course_codes
+                        )
+                        if result_subject
+                        else None
+                    }
+                )
+            timetable[actual_days[i]] = timings
 
         return timetable
 
     def _parse_timetable_subject(self, subject, course_codes):
         # For Reference
-        # "CST-302:L:: Gp-All: By Jagandeep Singh(E4678) at 1-3",
-        # "CST-328:L:: Gp-All: By Amritpal Singh(E5159) at 5-11",
+        # "CSB-421:L :: GP-All: By Steve Samson(E11030) at 1-3-C",
+        # "CSR-410:P :: GP-C: By Steve Samson(E11030) at 1-2-C"
         if subject == None:
             return None
-        return_subject = {}
+        parsed_subject = {}
 
         # Finding Subject Name
         sub_code_end = subject.find(":")
         sub_code = subject[0:sub_code_end]
         subject = subject[sub_code_end + 1 :]
-        return_subject["title"] = str(course_codes[sub_code]).upper()
+        parsed_subject["title"] = str(course_codes[sub_code]).upper()
 
         # Finding Type of Lecture
         session_type = subject[0]
-        subject = subject[1 : len(subject)]
+        subject = subject[1:]
         if session_type == "L":
-            return_subject["type"] = "Lecture"
+            parsed_subject["type"] = "Lecture"
         elif session_type == "P":
-            return_subject["type"] = "Practical"
+            parsed_subject["type"] = "Practical"
         else:
-            return_subject["type"] = "Tutorial"
+            parsed_subject["type"] = "Tutorial"
 
         # Finding Group Type
-        gp_start = subject.find("Gp-")
+        gp_start = subject.find("GP-")
         subject = subject[gp_start:]
         ending_colon = subject.find(":")
-        group_type = subject[gp_start:ending_colon]
-        return_subject["group"] = group_type
+        group_type = subject[3:ending_colon]
+        parsed_subject["group"] = group_type
         subject = subject[ending_colon + 1 :]
 
         # Finding Teacher's Name
@@ -394,8 +390,8 @@ class SessionUIMS:
         exp_end = subject.find("(")
         teacher_name = subject[exp_start + 3 : exp_end]
         pattern = re.compile("^[a-zA-Z ]*$")
-        return_subject["teacher"] = (
+        parsed_subject["teacher"] = (
             teacher_name if pattern.match(teacher_name) else None
         )
 
-        return return_subject
+        return parsed_subject
