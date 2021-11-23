@@ -335,19 +335,15 @@ class SessionUIMS:
         ]
 
         for i in range(len(actual_days)):
-            timings = []
+            timings = dict()
             for timing in range(len(timings_in_a_day)):
                 result_subject = tds_in_actual_timetable_rows[timing][i + 1].get_text(
                     strip=True
                 )
-                timings.append(
-                    {
-                        timings_in_a_day[timing]: self._parse_timetable_subject(
-                            result_subject, course_codes
-                        )
-                        if result_subject
-                        else None
-                    }
+                timings[timings_in_a_day[timing]] = (
+                    self._parse_timetable_subject(result_subject, course_codes)
+                    if result_subject
+                    else None
                 )
             timetable[actual_days[i]] = timings
 
