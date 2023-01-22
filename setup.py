@@ -12,6 +12,7 @@ setup(
     install_requires=[
         "requests >= 2.21.0",
         "beautifulsoup4 >= 4.6.3",
+        "pytesseract >= 0.3.10"
     ],
     description="A Python library to access information via https://uims.cuchd.in",
     long_description=long_description,
