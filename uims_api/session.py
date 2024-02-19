@@ -2,15 +2,17 @@ import requests
 from bs4 import BeautifulSoup
 import json
 import re
-from .exceptions import IncorrectCredentialsError, UIMSInternalError
+import pytesseract
+from .exceptions import ApiLoginFailureError, UIMSInternalError
+from PIL import Image
+from io import BytesIO
 
-BASE_URL = "https://uims.cuchd.in"
-AUTHENTICATE_URL = BASE_URL + "/uims/"
+AUTHENTICATE_URL = "https://students.cuchd.in/"
 
 ENDPOINTS = {
     "Attendance": "frmStudentCourseWiseAttendanceSummary.aspx",
     "Timetable": "frmMyTimeTable.aspx",
-    "Profile": "frmStudentProfile.aspx",
+    "Profile": "StudentHome.aspx",
     "Marks": "frmStudentMarksView.aspx",
 }
 # Workaround fix for new url
@@ -38,7 +40,7 @@ class SessionUIMS:
     def _login(self):
         response = requests.get(AUTHENTICATE_URL)
         soup = BeautifulSoup(response.text, "html.parser")
-        viewstate_tag = soup.find("input", {"name": "__VIEWSTATE"})
+        viewstate_tag = soup.find("input", {"id": "__VIEWSTATE"})
 
         data = {
             "__VIEWSTATE": viewstate_tag["value"],
@@ -49,33 +51,46 @@ class SessionUIMS:
         response = requests.post(
             AUTHENTICATE_URL, data=data, cookies=response.cookies, allow_redirects=False
         )
-
         soup = BeautifulSoup(response.text, "html.parser")
-
-        password_url = response.headers["location"]
+        password_url = AUTHENTICATE_URL + response.headers["location"]
         response = requests.get(password_url, cookies=response.cookies)
         login_cookies = response.cookies
         soup = BeautifulSoup(response.text, "html.parser")
         viewstate_tag = soup.find("input", {"name": "__VIEWSTATE"})
+        view_state_generator_tag = soup.find("input", {"id": "__VIEWSTATEGENERATOR"})
 
+        captcha_img_source_str = soup.find("img", {"id": "imgCaptcha"}).attrs["src"]
+        # get captcha image now
+        response = requests.get(AUTHENTICATE_URL + captcha_img_source_str)
+        captcha_answer = str(
+            pytesseract.image_to_string(
+                Image.open(BytesIO(response.content)), lang="eng"
+            )
+        )
+
+        cleaned_captcha_answer = "".join(l for l in captcha_answer if l.isalnum())
         data = {
             "__VIEWSTATE": viewstate_tag["value"],
+            "__VIEWSTATEGENERATOR": view_state_generator_tag["value"],
             "txtLoginPassword": self._password,
+            "txtcaptcha": cleaned_captcha_answer,
             "btnLogin": "LOGIN",
         }
-
-        response = requests.post(
-            password_url, data=data, cookies=response.cookies, allow_redirects=False
-        )
-
-        incorrect_credentials = response.status_code == 200
-        if incorrect_credentials:
-            raise IncorrectCredentialsError("Make sure UID and Password are correct.")
-        aspnet_session_cookies = response.cookies
-
         login_and_aspnet_session_cookies = requests.cookies.merge_cookies(
-            login_cookies, aspnet_session_cookies
+            login_cookies, response.cookies
         )
+        # final request, lets hit it
+        response = requests.post(
+            password_url,
+            data=data,
+            cookies=login_cookies,
+            allow_redirects=False,
+        )
+        login_failure = response.status_code == 200
+        if login_failure:
+            raise ApiLoginFailureError(
+                "Invalid login request sent to UIMS, check credentials or captcha"
+            )
         return login_and_aspnet_session_cookies
 
     def refresh_session(self):
@@ -98,8 +113,9 @@ class SessionUIMS:
         return self._full_name
 
     def _get_full_name(self):
-        profile_url = "https://uims.cuchd.in/UIMS/frmAccountStudentDetails.aspx"
-        response = requests.get(profile_url, cookies=self.cookies)
+        response = requests.get(
+            AUTHENTICATE_URL + ENDPOINTS["Profile"], cookies=self.cookies
+        )
         # Checking for error in response as status code returned is 200
         if response.text.find(ERROR_HEAD) != -1:
             raise UIMSInternalError("UIMS internal error occured")
