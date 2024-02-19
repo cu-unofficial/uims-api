@@ -7,13 +7,12 @@ from .exceptions import ApiLoginFailureError, UIMSInternalError
 from PIL import Image
 from io import BytesIO
 
-BASE_URL = "https://uims.cuchd.in"
-AUTHENTICATE_URL = BASE_URL + "/uims/"
+AUTHENTICATE_URL = "https://students.cuchd.in/"
 
 ENDPOINTS = {
     "Attendance": "frmStudentCourseWiseAttendanceSummary.aspx",
     "Timetable": "frmMyTimeTable.aspx",
-    "Profile": "frmStudentProfile.aspx",
+    "Profile": "StudentHome.aspx",
     "Marks": "frmStudentMarksView.aspx",
 }
 # Workaround fix for new url
@@ -41,7 +40,7 @@ class SessionUIMS:
     def _login(self):
         response = requests.get(AUTHENTICATE_URL)
         soup = BeautifulSoup(response.text, "html.parser")
-        viewstate_tag = soup.find("input", {"name": "__VIEWSTATE"})
+        viewstate_tag = soup.find("input", {"id": "__VIEWSTATE"})
 
         data = {
             "__VIEWSTATE": viewstate_tag["value"],
@@ -53,25 +52,26 @@ class SessionUIMS:
             AUTHENTICATE_URL, data=data, cookies=response.cookies, allow_redirects=False
         )
         soup = BeautifulSoup(response.text, "html.parser")
-
-        password_url = response.headers["location"]
+        password_url = AUTHENTICATE_URL + response.headers["location"]
         response = requests.get(password_url, cookies=response.cookies)
         login_cookies = response.cookies
         soup = BeautifulSoup(response.text, "html.parser")
         viewstate_tag = soup.find("input", {"name": "__VIEWSTATE"})
-        captcha_img_source_str = soup.find("img", {
-            "id": "imgCaptcha"
-        }).attrs["src"]
-        # get captcha image now
-        response = requests.get(
-            AUTHENTICATE_URL + captcha_img_source_str)
-        captcha_answer = str(pytesseract.image_to_string(
-            Image.open(BytesIO(response.content)), lang="eng"))
+        view_state_generator_tag = soup.find("input", {"id": "__VIEWSTATEGENERATOR"})
 
-        cleaned_captcha_answer = "".join(
-            l for l in captcha_answer if l.isalnum())
+        captcha_img_source_str = soup.find("img", {"id": "imgCaptcha"}).attrs["src"]
+        # get captcha image now
+        response = requests.get(AUTHENTICATE_URL + captcha_img_source_str)
+        captcha_answer = str(
+            pytesseract.image_to_string(
+                Image.open(BytesIO(response.content)), lang="eng"
+            )
+        )
+
+        cleaned_captcha_answer = "".join(l for l in captcha_answer if l.isalnum())
         data = {
             "__VIEWSTATE": viewstate_tag["value"],
+            "__VIEWSTATEGENERATOR": view_state_generator_tag["value"],
             "txtLoginPassword": self._password,
             "txtcaptcha": cleaned_captcha_answer,
             "btnLogin": "LOGIN",
@@ -81,12 +81,16 @@ class SessionUIMS:
         )
         # final request, lets hit it
         response = requests.post(
-            password_url, data=data, cookies=login_and_aspnet_session_cookies, allow_redirects=False
+            password_url,
+            data=data,
+            cookies=login_cookies,
+            allow_redirects=False,
         )
         login_failure = response.status_code == 200
         if login_failure:
             raise ApiLoginFailureError(
-                "Invalid login request sent to UIMS, check credentials or captcha")
+                "Invalid login request sent to UIMS, check credentials or captcha"
+            )
         return login_and_aspnet_session_cookies
 
     def refresh_session(self):
@@ -109,8 +113,9 @@ class SessionUIMS:
         return self._full_name
 
     def _get_full_name(self):
-        profile_url = AUTHENTICATE_URL + ENDPOINTS["Profile"]
-        response = requests.get(profile_url, cookies=self.cookies)
+        response = requests.get(
+            AUTHENTICATE_URL + ENDPOINTS["Profile"], cookies=self.cookies
+        )
         # Checking for error in response as status code returned is 200
         if response.text.find(ERROR_HEAD) != -1:
             raise UIMSInternalError("UIMS internal error occured")
@@ -160,8 +165,7 @@ class SessionUIMS:
             raise UIMSInternalError("UIMS internal error occured")
         soup = BeautifulSoup(response.text, "html.parser")
         viewstate_tag = soup.find("input", {"name": "__VIEWSTATE"})
-        event_validation_tag = soup.find(
-            "input", {"name": "__EVENTVALIDATION"})
+        event_validation_tag = soup.find("input", {"name": "__EVENTVALIDATION"})
         data = {
             "__VIEWSTATE": viewstate_tag["value"],
             "__EVENTVALIDATION": event_validation_tag["value"],
@@ -214,12 +218,9 @@ class SessionUIMS:
             raise UIMSInternalError("UIMS internal error occured")
         # Getting current session id from response
         session_block = response.text.find("CurrentSession")
-        session_block_origin = session_block + \
-            response.text[session_block:].find("(")
-        session_block_end = session_block + \
-            response.text[session_block:].find(")")
-        current_session_id = response.text[session_block_origin +
-                                           1: session_block_end]
+        session_block_origin = session_block + response.text[session_block:].find("(")
+        session_block_end = session_block + response.text[session_block:].find(")")
+        current_session_id = response.text[session_block_origin + 1 : session_block_end]
 
         if not self._session_id:
             self._session_id = current_session_id
@@ -234,10 +235,10 @@ class SessionUIMS:
             "'"
         )
         ending_quotation_mark = initial_quotation_mark + response.text[
-            initial_quotation_mark + 1:
+            initial_quotation_mark + 1 :
         ].find("'")
         report_id = response.text[
-            initial_quotation_mark + 1: ending_quotation_mark + 1
+            initial_quotation_mark + 1 : ending_quotation_mark + 1
         ]
 
         if not self._report_id:
@@ -269,8 +270,7 @@ class SessionUIMS:
         # getting minimal attendance
         attendance = self.attendance
         # Full report URL
-        full_report_url = AUTHENTICATE_URL + \
-            ENDPOINTS["Attendance"] + "/GetFullReport"
+        full_report_url = AUTHENTICATE_URL + ENDPOINTS["Attendance"] + "/GetFullReport"
         # Querying for every subject in attendance
         for subect in attendance:
             data = (
@@ -284,11 +284,9 @@ class SessionUIMS:
                 + self._session_id
                 + "'}"
             )
-            response = requests.post(
-                full_report_url, headers=HEADERS, data=data)
+            response = requests.post(full_report_url, headers=HEADERS, data=data)
             # removing all esc sequence chars
-            subect["FullAttendanceReport"] = json.loads(
-                json.loads(response.text)["d"])
+            subect["FullAttendanceReport"] = json.loads(json.loads(response.text)["d"])
         return attendance
 
     @property
@@ -310,8 +308,7 @@ class SessionUIMS:
             "__VIEWSTATE": viewstate_tag["value"],
             "__EVENTTARGET": "ctl00$ContentPlaceHolder1$ReportViewer1$ctl09$Reserved_AsyncLoadTarget",
         }
-        response = requests.post(
-            timetable_url, data=data, cookies=self.cookies)
+        response = requests.post(timetable_url, data=data, cookies=self.cookies)
         return self._extract_timetable(response)
 
     def _extract_timetable(self, response):
@@ -329,8 +326,7 @@ class SessionUIMS:
             tds = row.find_all("td")
             # first is code, second is course name
             if len(tds) > 1:
-                course_codes[tds[0].get_text(
-                    strip=True)] = tds[1].get_text(strip=True)
+                course_codes[tds[0].get_text(strip=True)] = tds[1].get_text(strip=True)
 
         # now extract day wise timetable from timetable_table
         timetable_table_rows = timetable_table.find_all("tr")
@@ -380,7 +376,7 @@ class SessionUIMS:
         # Finding Subject Name
         sub_code_end = subject.find(":")
         sub_code = subject[0:sub_code_end]
-        subject = subject[sub_code_end + 1:]
+        subject = subject[sub_code_end + 1 :]
         parsed_subject["title"] = str(course_codes[sub_code]).upper()
 
         # Finding Type of Lecture
@@ -399,12 +395,12 @@ class SessionUIMS:
         ending_colon = subject.find(":")
         group_type = subject[3:ending_colon]
         parsed_subject["group"] = group_type
-        subject = subject[ending_colon + 1:]
+        subject = subject[ending_colon + 1 :]
 
         # Finding Teacher's Name
         exp_start = subject.find("By ")
         exp_end = subject.find("(")
-        teacher_name = subject[exp_start + 3: exp_end]
+        teacher_name = subject[exp_start + 3 : exp_end]
         pattern = re.compile("^[a-zA-Z ]*$")
         parsed_subject["teacher"] = (
             teacher_name if pattern.match(teacher_name) else None
